@@ -1,6 +1,7 @@
 ###
-### Author: Mikulas Dite
-### Time-stamp: <2015-06-09 21:54:14 dwa>
+# Author: Mikulas Dite
+# Time-stamp: <2015-06-09 21:54:14 dwa>
+# select description from brand_posts_latest_es where description ilike  '%Madness%'
 
 from multicorn import ForeignDataWrapper
 from multicorn.utils import log_to_postgres as log2pg
@@ -10,6 +11,8 @@ from functools import partial
 import httplib
 import json
 import logging
+import re
+
 
 class ElasticsearchFDW (ForeignDataWrapper):
 
@@ -42,7 +45,17 @@ class ElasticsearchFDW (ForeignDataWrapper):
 
     def execute(self, quals, columns):
         conn = httplib.HTTPConnection(self.host, self.port)
-        conn.request("GET", "/%s/%s/_search?q=*:*&size=100000000" % (self.node, self.index))
+
+        if quals:
+            # TDB - take all the elements to ES query
+            for qual in quals:
+                f, o, v = qual.field_name, qual.operator, qual.value
+                v = (re.sub("[\.\t\,\:;\(\)\.%]", "", v, 0, 0)).lower()
+
+            conn.request("GET", "/%s/%s/_search?q=%s:%s&size=100000000" % (self.node, self.index, f, v))
+        else:
+            conn.request("GET", "/%s/%s/_search?q=*:*&size=100000000" % (self.node, self.index))
+
         resp = conn.getresponse()
         if not 200 == resp.status:
             return (0, 0)
@@ -69,7 +82,7 @@ class ElasticsearchFDW (ForeignDataWrapper):
         This column name should be subsequently present in every
         returned resultset.
         """
-        return 'id';
+        return 'id'
 
     def es_index(self, id, values):
         content = json.dumps(values)
@@ -89,7 +102,7 @@ class ElasticsearchFDW (ForeignDataWrapper):
         log2pg('MARK Insert Request - new values:  %s' % new_values, logging.DEBUG)
 
         if not 'id' in new_values:
-             log2pg('INSERT requires "id" column.  Missing in: %s' % new_values, logging.ERROR)
+            log2pg('INSERT requires "id" column.  Missing in: %s' % new_values, logging.ERROR)
 
         id = new_values['id']
         new_values.pop('id', None)
@@ -110,7 +123,7 @@ class ElasticsearchFDW (ForeignDataWrapper):
         raw = resp.read()
         return json.loads(raw)
 
-## Local Variables: ***
-## mode:python ***
-## coding: utf-8 ***
-## End: ***
+# Local Variables: ***
+# mode:python ***
+# coding: utf-8 ***
+# End: ***
